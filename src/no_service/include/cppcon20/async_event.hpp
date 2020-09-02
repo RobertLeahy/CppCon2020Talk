@@ -45,7 +45,7 @@ public:
     return invoked;
   }
   template<typename CompletionToken>
-  auto async_wait(CompletionToken&& token) {
+  decltype(auto) async_wait(CompletionToken&& token) {
     return asio::async_initiate<CompletionToken, void()>([&](auto h) {
       auto ex = asio::get_associated_executor(h, ex_);
       pendings_.emplace_back([h = std::move(h), ex = std::move(ex)]() mutable {

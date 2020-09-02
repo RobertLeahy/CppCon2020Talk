@@ -82,7 +82,7 @@ public:
     return retr;
   }
   template<typename CompletionToken>
-  auto async_wait(CompletionToken&& token) {
+  decltype(auto) async_wait(CompletionToken&& token) {
     assert(state_);
     return asio::async_initiate<CompletionToken, signature_type>([
       state = state_](auto h)
