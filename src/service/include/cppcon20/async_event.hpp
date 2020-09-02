@@ -26,24 +26,21 @@ struct basic_async_event {
   basic_async_event(basic_async_event&& other) = delete;
   basic_async_event& operator=(basic_async_event&&) = delete;
 private:
-  decltype(auto) get_service() const {
-    auto&& ctx = asio::query(ex_, asio::execution::context);
-    return asio::use_service<service<std::vector<pending<void()>>>>(ctx);
-  }
+  using pendings_type = std::vector<pending<void()>>;
+  using service_type = service<pendings_type>;
+  Executor ex_;
+  service_type& service_;
+  pendings_type* pendings_;
 public:
-  explicit basic_async_event(executor_type ex) : ex_(std::move(ex)) {
-    pendings_ = get_service().create();
-  }
+  explicit basic_async_event(executor_type ex) : ex_(std::move(ex)), service_(
+    asio::use_service<service_type>(asio::query(ex_, asio::execution::
+    context))), pendings_(service_.create()) {}
   ~basic_async_event() noexcept {
-    get_service().destroy(pendings_);
+    service_.destroy(pendings_);
   }
   auto get_executor() const noexcept {
     return ex_;
   }
-private:
-  Executor ex_;
-  std::vector<pending<void()>>* pendings_;
-public:
   std::size_t notify_one() {
     if (pendings_->empty()) return 0;
     auto pending = std::move(pendings_->front());
