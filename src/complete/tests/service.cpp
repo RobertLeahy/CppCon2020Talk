@@ -28,20 +28,14 @@ private:
   statistics& stats_;
 };
 
-TEST_CASE("Objects of heterogeneous type may be created and destroyed",
-  "[service]")
-{
+TEST_CASE("Objects may be created and destroyed", "[service]") {
   statistics stats;
   ::asio::io_context ctx;
-  auto&& s = ::asio::use_service<service>(ctx);
-  auto ptr = s.create<object>(stats);
+  auto&& s = ::asio::use_service<service<object>>(ctx);
+  auto ptr = s.create(stats);
   CHECK(!stats.destroyed);
-  struct derived : object {
-    derived(statistics& stats, int foo) noexcept : object(stats), foo(foo) {}
-    int foo;
-  };
-  auto ptr2 = s.create<derived>(stats, 5);
-  CHECK(ptr2->foo == 5);
+  auto ptr2 = s.create(stats);
+  CHECK(!stats.destroyed);
   s.destroy(ptr2);
   CHECK(stats.destroyed == 1U);
   s.destroy(ptr);
@@ -54,8 +48,8 @@ TEST_CASE("The lifetime of all objects ends when the service is shutdown",
   statistics stats;
   {
     ::asio::io_context ctx;
-    auto&& s = ::asio::use_service<service>(ctx);
-    s.create<object>(stats);
+    auto&& s = ::asio::use_service<service<object>>(ctx);
+    s.create(stats);
     CHECK(!stats.destroyed);
   }
   CHECK(stats.destroyed == 1U);
@@ -64,8 +58,8 @@ TEST_CASE("The lifetime of all objects ends when the service is shutdown",
 TEST_CASE("After shutdown destroy is a no-op", "[service]") {
   statistics stats;
   ::asio::io_context ctx;
-  auto&& s = ::asio::use_service<service>(ctx);
-  auto ptr = s.create<object>(stats);
+  auto&& s = ::asio::use_service<service<object>>(ctx);
+  auto ptr = s.create(stats);
   CHECK(!stats.destroyed);
   s.shutdown();
   CHECK(stats.destroyed == 1U);
@@ -79,10 +73,10 @@ TEST_CASE("A service may manage many objects, and those objects may be "
   statistics stats;
   {
     ::asio::io_context ctx;
-    auto&& s = ::asio::use_service<service>(ctx);
+    auto&& s = ::asio::use_service<service<object>>(ctx);
     using objs_type = std::vector<object*>;
     objs_type objs;
-    auto create = [&]() { objs.push_back(s.create<object>(stats)); };
+    auto create = [&]() { objs.push_back(s.create(stats)); };
     auto destroy = [&](objs_type::size_type i) noexcept {
       auto iter = objs.begin();
       iter += i;

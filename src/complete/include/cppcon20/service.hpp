@@ -9,25 +9,15 @@
 
 namespace cppcon20 {
 
+template<typename T>
 class service : public ::asio::execution_context::service {
 private:
-  struct node_base {
-    node_base() = default;
-    node_base(const node_base&) = delete;
-    node_base& operator=(const node_base&) = delete;
-    node_base* next;
-    node_base* prev{nullptr};
-    virtual ~node_base() = default;
-  };
-  static_assert(!std::is_copy_constructible_v<node_base>);
-  static_assert(!std::is_move_constructible_v<node_base>);
-  static_assert(!std::is_copy_assignable_v<node_base>);
-  static_assert(!std::is_move_assignable_v<node_base>);
-  template<typename T>
-  struct node final : public T, public node_base {
+  struct node : public T {
     template<typename... Args>
     explicit node(Args&&... args) noexcept(std::is_nothrow_constructible_v<T,
       Args&&...>) : T(std::forward<Args>(args)...) {}
+    node* next;
+    node* prev{nullptr};
   };
 public:
   using key_type = service;
@@ -38,9 +28,6 @@ public:
   service() = delete;
   service(const service&) = delete;
   service& operator=(const service&) = delete;
-  ~service() noexcept {
-    assert(!begin_);
-  }
   virtual void shutdown() override {
     while (begin_) {
       auto&& tmp = *begin_;
@@ -48,48 +35,34 @@ public:
       delete &tmp;
     }
   }
-  template<typename T, typename... Args>
+  template<typename... Args>
   T* create(Args&&... args) {
-    auto ptr = new node<T>(std::forward<Args>(args)...);
-    node_base& base = *ptr;
-    base.next = begin_;
+    auto ptr = new node(std::forward<Args>(args)...);
+    ptr->next = begin_;
     if (begin_) {
-      begin_->prev = &base;
+      begin_->prev = ptr;
     }
-    begin_ = &base;
+    begin_ = ptr;
     return ptr;
   }
-  template<typename T>
   void destroy(T* obj) noexcept {
     if (!begin_) {
       return;
     }
     assert(obj);
-    using node_type = node<T>;
-    auto&& node = static_cast<node_type&>(*obj);
-    const node_base& base = node;
-#ifndef NDEBUG
-    bool found = false;
-    for (auto curr = begin_; curr; curr = curr->next) {
-      if (curr == &base) {
-        found = true;
-        break;
-      }
+    auto ptr = static_cast<node*>(obj);
+    if (ptr->next) {
+      ptr->next->prev = ptr->prev;
     }
-    assert(found);
-#endif
-    if (base.next) {
-      base.next->prev = base.prev;
-    }
-    if (base.prev) {
-      base.prev->next = base.next;
+    if (ptr->prev) {
+      ptr->prev->next = ptr->next;
     } else {
-      begin_ = base.next;
+      begin_ = ptr->next;
     }
-    delete std::addressof(node);
+    delete ptr;
   }
 private:
-  node_base* begin_{nullptr};
+  node* begin_{nullptr};
 };
 
 }

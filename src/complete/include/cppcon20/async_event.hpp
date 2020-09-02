@@ -34,13 +34,14 @@ private:
     executor_type executor;
     pendings_type pendings;
   };
-  static service& get_service(executor_type& ex) {
-    return asio::use_service<service>(asio::query(ex, asio::execution::
+  using service_type = service<state_type>;
+  static service_type& get_service(executor_type& ex) {
+    return asio::use_service<service_type>(asio::query(ex, asio::execution::
       context));
   }
 public:
-  explicit basic_async_event(executor_type ex) : state_(get_service(ex).template
-    create<state_type>(std::move(ex))) {}
+  explicit basic_async_event(executor_type ex) : state_(get_service(ex).create(
+    std::move(ex))) {}
   ~basic_async_event() noexcept {
     if (state_) {
       get_service(state_->executor).destroy(state_);

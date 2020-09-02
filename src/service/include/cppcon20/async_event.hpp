@@ -28,11 +28,11 @@ struct basic_async_event {
 private:
   decltype(auto) get_service() const {
     auto&& ctx = asio::query(ex_, asio::execution::context);
-    return asio::use_service<service>(ctx);
+    return asio::use_service<service<std::vector<pending<void()>>>>(ctx);
   }
 public:
   explicit basic_async_event(executor_type ex) : ex_(std::move(ex)) {
-    pendings_ = get_service().template create<std::vector<pending<void()>>>();
+    pendings_ = get_service().create();
   }
   ~basic_async_event() noexcept {
     get_service().destroy(pendings_);
