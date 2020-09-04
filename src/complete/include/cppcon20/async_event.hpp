@@ -23,59 +23,53 @@ namespace cppcon20 {
 template<asio::execution::executor Executor>
 struct basic_async_event {
   using executor_type = Executor;
-  basic_async_event(basic_async_event&& other) noexcept : state_(std::exchange(
-    other.state_, nullptr)) {}
+  basic_async_event(basic_async_event&& other) noexcept : ex_(std::move(other
+    .ex_)), pendings_(std::exchange(other.pendings_, nullptr)) {}
 private:
   using signature_type = void();
   using pending_type = pending<signature_type>;
   using pendings_type = std::vector<pending_type>;
-  struct state_type {
-    explicit state_type(executor_type ex) : executor(std::move(ex)) {}
-    executor_type executor;
-    pendings_type pendings;
-  };
-  using service_type = service<state_type>;
+  using service_type = service<pendings_type>;
   static service_type& get_service(executor_type& ex) {
     return asio::use_service<service_type>(asio::query(ex, asio::execution::
       context));
   }
 public:
-  explicit basic_async_event(executor_type ex) : state_(get_service(ex).create(
-    std::move(ex))) {}
+  explicit basic_async_event(executor_type ex) : ex_(std::move(ex)), pendings_(
+    get_service(ex).create()) {}
   ~basic_async_event() noexcept {
-    if (state_) {
-      get_service(state_->executor).destroy(state_);
+    if (pendings_) {
+      get_service(ex_).destroy(pendings_);
     }
   }
   auto get_executor() const noexcept {
-    assert(state_);
-    return state_->executor;
+    return ex_;
   }
   //  TODO: Move ctor? Move assignment operator?
   std::size_t notify_one() {
-    assert(state_);
-    if (state_->pendings.empty()) {
+    assert(pendings_);
+    if (pendings_->empty()) {
       return 0;
     }
-    auto pending = std::move(state_->pendings.front());
+    auto pending = std::move(pendings_->front());
     assert(pending);
-    state_->pendings.erase(state_->pendings.begin());
+    pendings_->erase(pendings_->begin());
     pending();
     return 1;
   }
   std::size_t notify_all() {
-    assert(state_);
-    auto iter = state_->pendings.begin();
+    assert(pendings_);
+    auto iter = pendings_->begin();
     struct guard {
       ~guard() noexcept {
-        self.state_->pendings.erase(self.state_->pendings.begin(), it);
+        self.pendings_->erase(self.pendings_->begin(), it);
       }
       decltype(iter)& it;
       basic_async_event& self;
     };
     guard g{iter, *this};
     std::size_t retr(0);
-    for (auto end = state_->pendings.end(); iter != end; ++iter, ++retr) {
+    for (auto end = pendings_->end(); iter != end; ++iter, ++retr) {
       assert(*iter);
       (*iter)();
     }
@@ -83,20 +77,19 @@ public:
   }
   template<typename CompletionToken>
   decltype(auto) async_wait(CompletionToken&& token) {
-    assert(state_);
-    return asio::async_initiate<CompletionToken, signature_type>([
-      state = state_](auto h)
+    assert(pendings_);
+    return asio::async_initiate<CompletionToken, signature_type>([ex = ex_,
+      pendings = pendings_](auto h)
     {
-      assert(state);
-      auto io_ex = asio::prefer(state->executor, asio::execution::
-        outstanding_work.tracked);
-      auto assoc_ex = asio::get_associated_executor(h, state->executor);
+      assert(pendings);
+      auto io_ex = asio::prefer(ex, asio::execution::outstanding_work.tracked);
+      auto assoc_ex = asio::get_associated_executor(h, ex);
       auto alloc_ex = asio::prefer(std::move(assoc_ex), asio::execution::
         allocator(asio::get_associated_allocator(h)));
       auto ex = asio::prefer(std::move(alloc_ex), asio::execution::
         outstanding_work.tracked);
-      state->pendings.emplace_back([h = std::move(h), io_ex = std::move(io_ex),
-        ex = std::move(ex)]() mutable
+      pendings->emplace_back([h = std::move(h), io_ex = std::move(io_ex), ex =
+        std::move(ex)]() mutable
       {
         auto local_ex = std::move(ex);
         asio::execution::execute(local_ex, [h = std::move(h), io_ex = std::move
@@ -109,7 +102,8 @@ public:
     }, token);
   }
 private:
-  state_type* state_;
+  Executor ex_;
+  pendings_type* pendings_;
 };
 
 using async_event = basic_async_event<asio::io_context::executor_type>;

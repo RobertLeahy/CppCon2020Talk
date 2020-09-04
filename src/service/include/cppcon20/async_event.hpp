@@ -32,9 +32,11 @@ private:
   service_type& service_;
   pendings_type* pendings_;
 public:
-  explicit basic_async_event(executor_type ex) : ex_(std::move(ex)), service_(
-    asio::use_service<service_type>(asio::query(ex_, asio::execution::
-    context))), pendings_(service_.create()) {}
+  explicit basic_async_event(executor_type ex) : ex_(std::move(ex)),
+    service_(
+      asio::use_service<service_type>(
+        asio::query(ex_, asio::execution::context))),
+    pendings_(service_.create()) {}
   ~basic_async_event() noexcept {
     service_.destroy(pendings_);
   }
