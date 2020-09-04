@@ -26,8 +26,7 @@ struct basic_async_event {
   basic_async_event(basic_async_event&& other) noexcept : ex_(std::move(other
     .ex_)), pendings_(std::exchange(other.pendings_, nullptr)) {}
 private:
-  using signature_type = void();
-  using pending_type = pending<signature_type>;
+  using pending_type = pending<void()>;
   using pendings_type = std::vector<pending_type>;
   using service_type = service<pendings_type>;
   static service_type& get_service(executor_type& ex) {
@@ -78,21 +77,21 @@ public:
   template<typename CompletionToken>
   decltype(auto) async_wait(CompletionToken&& token) {
     assert(pendings_);
-    return asio::async_initiate<CompletionToken, signature_type>([ex = ex_,
+    return asio::async_initiate<CompletionToken, void()>([ex = ex_,
       pendings = pendings_](auto h)
     {
       assert(pendings);
       auto io_ex = asio::prefer(ex, asio::execution::outstanding_work.tracked);
       auto assoc_ex = asio::get_associated_executor(h, ex);
-      auto alloc_ex = asio::prefer(std::move(assoc_ex), asio::execution::
-        allocator(asio::get_associated_allocator(h)));
-      auto ex = asio::prefer(std::move(alloc_ex), asio::execution::
+      auto ex = asio::prefer(std::move(assoc_ex), asio::execution::
         outstanding_work.tracked);
       pendings->emplace_back([h = std::move(h), io_ex = std::move(io_ex), ex =
         std::move(ex)]() mutable
       {
-        auto local_ex = std::move(ex);
-        asio::execution::execute(local_ex, [h = std::move(h), io_ex = std::move
+        auto alloc = asio::get_associated_allocator(h);
+        auto alloc_ex = asio::prefer(std::move(ex), asio::execution::allocator(
+          alloc));
+        asio::execution::execute(alloc_ex, [h = std::move(h), io_ex = std::move
           (io_ex)]() mutable
         {
           auto local_ex = std::move(io_ex);
